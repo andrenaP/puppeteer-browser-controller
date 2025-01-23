@@ -1,12 +1,11 @@
-# E-Ink Screenshot Project
+# PBK
 
-This project allows you to take screenshots of websites and display them on an E-Ink screen using Puppeteer and Firefox.
+This project allows you to take screenshots of websites using Puppeteer and Firefox.
 
 ## Features
 
 - Capture screenshots of websites using Puppeteer.
 - Navigate, click, and interact with web pages before capturing screenshots.
-- Display the screenshots.
 
 ## Prerequisites
 
