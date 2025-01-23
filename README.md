@@ -12,6 +12,7 @@ This project allows you to take screenshots of websites using Puppeteer and Fire
 - **Node.js** (version 18 or later)
 - **Firefox** (installed on your system)
 - **timg** (installed on your system)
+- **Setup tmp** (run this to create a soft link to tmp) `ln -s /tmp tmp`
 
 ## Setup
 
@@ -45,23 +46,16 @@ docker build -t einkviewer .
 **Then run it.**
 
 ```docker
-docker run -ti --rm -e FIREFOX_PATH_LOCAL="your-path-to-profile" einkviewer npm start
+docker run -ti --rm -p 3000:3000 -e FIREFOX_PATH_LOCAL="your-path-to-profile" einkviewer npm start
 ```
 
-## Commands
+## API
 
-- `navigate [URL]` - Navigate to a URL.
-- `click [CSS_SELECTOR]` - Click an element by its CSS selector.
-- `screenshot [NAME]` - Capture a screenshot in **PNG** and save it with the specified name.
-- `pageup` - Scroll up by one full page.
-- `pagedown` - Scroll down by one full page.
-- `move [+-<px>]` - Scroll by a specific number of pixels.
-- `exit` - Close the browser and exit.
+### post /execute
+Execute the command
+```json
+{"script": "await page.goto('http://localhost:8080/', { waitUntil: 'networkidle2' });", "commandId": 1},
+```
 
-## License
-
-MIT License
-
----
-
-This version is focused on capturing and displaying screenshots, as per your requirements!
+###  post /shutdown
+Shutdown the browser

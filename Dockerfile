@@ -17,3 +17,5 @@ RUN npm install
 
 RUN  npx puppeteer browsers install firefox
 COPY --chown=node:node . .
+
+RUN ln -s /tmp tmp

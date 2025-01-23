@@ -4,21 +4,30 @@ const path = require("path");
 const { spawn } = require("child_process");
 require("dotenv").config();
 
+
+const express = require('express');
+const vm = require('vm');
+
+
+
+const app = express();
+app.use(express.json());
+
+let browser; // Puppeteer browser instance
+let page; // Single Puppeteer page instance
+let context; // VM context
+
+const SCREENSHOTS_DIR=`/tmp/`
+
+
 //console.log(process.env);
 const Profile = path.resolve(process.env.FIREFOX_PATH_LOCAL);
 console.log("Loading Profile from:", Profile);
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
 
-// Helper function for terminal input
-const askQuestion = (query) =>
-  new Promise((resolve) => rl.question(query, resolve));
 
+// Initialize Puppeteer and create a browser and page
 (async () => {
-  // Launch the browser with Firefox
   const browser = await puppeteer.launch({
     product: "firefox", // Use Firefox
     browser: "firefox", // Use Firefox
@@ -34,137 +43,61 @@ const askQuestion = (query) =>
       // `--disable-extensions-except=${extensionPath}`,
       `-P "${Profile}"`, // Path to the preconfigured Firefox profile
     ], // For compatibility
-  });
+  })
 
-  const page = await browser.newPage();
-  await page.setViewport({ width: 800, height: 600 }); // Match e-ink display resolution
-
-  console.log("Browser launched. Enter commands to control it.");
-
-  console.log(`
-Commands:
-  1. navigate [URL]         - Go to a specific URL (e.g., "navigate https://example.com").
-  2. click [CSS_SELECTOR]   - Click an element by its CSS selector (e.g., "click a.nextchap").
-  3. screenshot [NAME]      - Take a screenshot and save it with a name (e.g., "screenshot page1.png").
-  4. display [NAME]         - Display a screenshot using timg (made for kitty but will work anywhere).
-  4. pageup                 - Scroll the page up by one full page.
-  5. pagedown               - Scroll the page down by one full page.
-  6. move [+-<px>]          - Scroll the page by a specific number of pixels (e.g., "move +200" or "move -200").
-  7. exit                   - Close the browser and exit the app.
-    `);
-
-  // Main interaction loop
-  let isRunning = true;
-  while (isRunning) {
-    const command = await askQuestion(`
-Your command: `);
-
-    // Split command into parts
-    const [action, ...args] = command.split(" ");
-    var lasttakenscreenshot = "";
-
-    try {
-      switch (action) {
-        case "navigate": {
-          const url = args.join(" ");
-          if (!url) {
-            console.log("Error: Please provide a URL.");
-          } else {
-            console.log(`Navigating to: ${url}`);
-            await page.goto(url, { waitUntil: "networkidle2" });
-            console.log("Navigation complete.");
-          }
-          break;
-        }
-
-        case "click": {
-          const selector = args.join(" ");
-          if (!selector) {
-            console.log("Error: Please provide a CSS selector.");
-          } else {
-            console.log(`Clicking element: ${selector}`);
-            await page.click(selector);
-            console.log("Click action complete.");
-          }
-          break;
-        }
-
-        case "screenshot": {
-          const fileName = args.join(" ") || "screenshot.png";
-          // console.log(`Taking a screenshot: ${fileName}`);
-          await page.screenshot({ path: fileName });
-          console.log(`Screenshot saved as ${fileName}`);
-          lasttakenscreenshot = fileName;
-          break;
-        }
-        case "display": {
-          const imagepath = args.join(" ") || "screenshot.png";
-          if (!imagepath) imagepath = lasttakenscreenshot;
-
-          const timg = spawn("sh", ["-c", `timg ${imagepath}`], {
-            stdio: "inherit",
-          });
-
-          timg.on("error", (err) => {
-            console.error("Failed to start timg:", err);
-          });
-
-          timg.on("close", (code) => {
-            if (code === 0) {
-              console.log("Image displayed successfully.");
-            } else {
-              console.error(`timg process exited with code ${code}`);
-            }
-          });
-
-          break;
-        }
-
-        case "pageup": {
-          console.log("Scrolling page up by one full page.");
-          await page.keyboard.press("PageUp");
-          console.log("Page scrolled up.");
-          break;
-        }
-
-        case "pagedown": {
-          console.log("Scrolling page down by one full page.");
-          await page.keyboard.press("PageDown");
-          console.log("Page scrolled down.");
-          break;
-        }
-
-        case "move": {
-          const px = parseInt(args.join(" "), 10);
-          if (isNaN(px)) {
-            console.log("Error: Please provide a valid number of pixels.");
-          } else {
-            console.log(`Scrolling by ${px} pixels.`);
-            await page.evaluate((px) => {
-              window.scrollBy(0, px);
-            }, px);
-            console.log(`Page scrolled by ${px} pixels.`);
-          }
-          break;
-        }
-
-        case "exit": {
-          console.log("Closing browser and exiting...");
-          isRunning = false;
-          break;
-        }
-
-        default: {
-          console.log("Error: Unknown command. Try again.");
-          break;
-        }
-      }
-    } catch (error) {
-      console.error("An error occurred:", error.message);
-    }
-  }
-
-  // Clean up
-  await browser.close();
-  rl.close();
+  page = await browser.newPage();
+  
+  // Create a VM context with Puppeteer objects
+  context = {
+      browser,
+      page,
+      screenshotIMG: null, // Holds the latest screenshot image
+      console,
+  };
+  vm.createContext(context); // Contextify the object
+  console.log('Puppeteer browser launched and VM context created');
 })();
+
+
+// Endpoint to execute user-provided scripts in the VM
+app.post("/execute", async (req, res) => {
+  const { script, commandId } = req.body;
+  if (!script) return res.status(400).send("Missing script to execute");
+
+  try {
+    // Wrap the user-provided script in an async function and execute it
+    const wrappedScript = `
+            (async () => {
+                ${script}
+            })();
+        `;
+    await vm.runInContext(wrappedScript, context);
+
+    // Take a screenshot after the script execution
+    const screenshotPath = SCREENSHOTS_DIR+ `screenshot_${commandId}.bmp`
+    await page.screenshot({ path: screenshotPath, type: "bmp" });
+
+    // Send the screenshot file back as the response
+    res.sendFile(screenshotPath, { root: "." }, (err) => {
+      if (err) console.error("Error sending screenshot:", err);
+    });
+  } catch (error) {
+    console.error("Error executing script:", error);
+    res.status(500).send(`Error executing script: ${error.message}`);
+  }
+});
+
+// Close the browser and cleanup on shutdown
+app.post("/shutdown", async (req, res) => {
+  try {
+    await browser.close();
+    res.send("Browser closed");
+  } catch (error) {
+    console.error("Error closing browser:", error);
+    res.status(500).send("Error closing browser");
+  }
+});
+
+// Start the server
+const PORT = 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
