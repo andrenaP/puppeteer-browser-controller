@@ -2,6 +2,8 @@
 
 This project allows you to take screenshots of websites using Puppeteer and Firefox.
 
+Here I can render images on epd7in5_V2 using Rasberry Pi Zero W2. 
+![E-INK](IMG_20251124_000155.jpg)
 ## Features
 
 - Capture screenshots of websites using Puppeteer.
